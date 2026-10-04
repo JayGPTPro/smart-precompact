@@ -1,0 +1,6 @@
+תתקין לי את הסקיל Smart PreCompact (התיקייה smart-precompact, שהוספתי לפרויקט או שהורדת עכשיו). בבקשה:
+1. תבדוק איזה Python יש לי: python3 --version, ואם לא עובד, python --version. צריך 3.8 ומעלה. אם אין, תגיד לי, תתקין רק את הסקיל (שלב 2) ותדלג על ה-hook.
+2. תעתיק את כל התיקייה ל-skills הגלובלי שלי: ~/.claude/skills/smart-precompact במק ולינוקס, %USERPROFILE%\.claude\skills\smart-precompact בווינדוס. לא לתוך הפרויקט הזה. אם כבר קיימת שם תיקייה בשם הזה, זה עדכון: תשמור את config.md הקיים שלי ותחזיר אותו אחרי ההעתקה.
+3. תריץ את הטסטים עם ה-Python שמצאת: ~/.claude/skills/smart-precompact/scripts/test_compact_hook.py, ותגיד לי אם עברו.
+4. תסביר לי בשתי שורות מה ה-hook עושה (README.he.md, סעיף "ה-hook"), ותשאל אם להתקין אותו. אם אני מאשר: תריץ את scripts/install_hook.py עם אותו Python, ואז את scripts/compact_hook.py --test.
+5. בסוף, תמחק את העותק הזמני (מהפרויקט או מההורדה), ותגיד לי בדיוק את זה: "פתח שיחה חדשה ב-Claude Code ושלח בה הודעה כלשהי. בתשובה Claude יגיד שה-hook עובד וכמה הקונטקסט מלא. בשיחה הזו זה לא יקרה, כי ה-hook נטען רק בשיחה חדשה. את הסקיל אפשר להפעיל ידנית עם /smart-precompact." אם לא התקנו את ה-hook, תגיד רק את המשפט האחרון.
