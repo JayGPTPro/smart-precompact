@@ -35,6 +35,7 @@ STATE_TTL_SECS = 14 * 24 * 3600
 HANDOFF_TTL_SECS = 14 * 24 * 3600   # a handoff file nobody rewrote for this long is deleted
 HANDOFF_HEADER = b"# Handoff . "     # the skill's first line; files without it are not ours to delete
 RESTORE_MAX_CHARS = 6000
+COMPACT_LINE_PREFIX = "<!-- compact:"   # the skill's hidden /compact line, read by the mod
 
 ONE_M, TWO_HUNDRED_K = 1_000_000, 200_000
 INPUT_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
@@ -266,8 +267,9 @@ def threshold_note(tier, last, pct, tokens, window, path):
                        "handoff file by itself." % (path, tier))
     return head + ("This is the last notice, so blocks from an earlier notice are stale. At the end of the same reply, run "
                    "the skill smart-precompact with the argument `handoff` again (same file %s, it gets overwritten). "
-                   "Its receipt line, in the language of the user's message, says plainly that it is time to paste the "
-                   "/compact line now, before automatic compaction runs without these instructions." % path)
+                   "Its receipt line, in the language of the user's message, says plainly that it is time to compact now: "
+                   "press Smart compact in the band above the prompt when it shows, or paste the /compact line, before "
+                   "the automatic compaction runs on its own." % path)
 
 
 def test_note(tokens, window, steps):
@@ -348,6 +350,8 @@ def on_session_start(data):
         return
     with open(path, encoding="utf-8", errors="replace") as f:
         body = f.read(RESTORE_MAX_CHARS)
+    # The skill's last line carries its /compact line for the mod; the conversation does not need it.
+    body = "\n".join(line for line in body.splitlines() if not line.startswith(COMPACT_LINE_PREFIX)).rstrip() + "\n"
     state["restored_mtime"] = mtime
     try_save(session_id, state)
     written = time.strftime("%H:%M", time.localtime(mtime))

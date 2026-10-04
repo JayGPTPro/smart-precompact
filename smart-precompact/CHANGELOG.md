@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.0 (2026-10-04)
+
+- In `handoff` mode the skill also saves its /compact line, as a hidden last line of the
+  handoff file (`<!-- compact: ... -->`). The Smart PreCompact mod runs exactly that
+  compact in one click. The hook strips the line before it restores the file.
+- The Smart PreCompact mod ships inside the skill folder (`.claude-plugin/`, `hooks/`,
+  `types/`). Claude Code loads it by itself in every new session: a band above the prompt
+  with the context meter, one Smart compact button, and a receipt after the compact.
+  The skill itself does not depend on the mod, and works the same without it.
+- The band shows from the first reply. Hide hides it until the next threshold.
+- The band adds the prepared line, or a general list of what to keep, to every compact that has
+  no instructions of its own, the automatic one included.
+- The hook's last notice and the skill's text point to the Smart compact button.
+
 ## 3.0.0 (2026-10-04)
 
 - **One skill, any language.** The instructions are in English, and everything the user

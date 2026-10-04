@@ -295,6 +295,12 @@ class HookTest(Base):
         os.utime(path, (time.time() + 5, time.time() + 5))
         self.assertIn("v1", self.note(self.compacted(), event="SessionStart"))
 
+    def test_restore_strips_the_hidden_compact_line(self):
+        self.write_handoff("Building: a landing page\n<!-- compact: Keep: why the GSAP from() approach failed -->")
+        text = self.note(self.compacted(), event="SessionStart")
+        self.assertIn("Building: a landing page", text)
+        self.assertNotIn("<!-- compact:", text)
+
     def test_restore_only_on_compact(self):
         self.write_handoff()
         for source in ("startup", "resume", "clear"):

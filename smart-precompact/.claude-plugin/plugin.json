@@ -1,0 +1,10 @@
+{
+  "name": "smart-precompact-mod",
+  "version": "3.1.0",
+  "description": "A context meter above the prompt, one Smart compact button that prepares the keep-list and compacts in one press, and that keep-list added to any compact that has none, including the automatic one",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "JayGPTPro",
+    "url": "https://jaygptpro.com/smart-precompact/"
+  }
+}

@@ -71,12 +71,13 @@ It does two things:
      from the note.
    - One line to the user, in the language of their message: the context passed X%,
      and the /compact line is ready. At the second threshold the wording is sharper:
-     now is the time to paste it, before the automatic compact runs without the
-     instructions.
+     now is the time to compact (Smart compact in the band above the prompt, when it
+     shows, or paste the line), before the automatic compact runs on its own.
    - The user already asked for the skill in that same message? Run once, and add
      `handoff`.
 2. **After a compact:** puts the session's handoff file back into the conversation by
-   itself. So when the hook is installed, the user only has to paste the /compact line.
+   itself. So when the hook is installed, the user only has to press Smart compact in the
+   band, or paste the /compact line.
 
 ---
 
@@ -195,7 +196,10 @@ item that is already there.
 `~/.claude/handoffs/<name of the root folder>.md`.
 
 **The content:** first line `# Handoff . <root> . <date and time from step 1>`, an
-empty line, and then block 2 as written in step 3. **One file per session, overwritten
+empty line, then block 2 as written in step 3, and as the very last line block 1 in a
+hidden comment: `<!-- compact: <block 1 without the leading /compact, on one line> -->`.
+The Smart PreCompact mod reads that line to run exactly this compact in one click; the
+hook strips it before it puts the file back into the conversation. **One file per session, overwritten
 on every run**, no archive: working state goes stale, and an old version of it
 misleads. The hook deletes a file nobody touched for 14 days, and identifies it by the
 first line: **do not change the header**, or the file will never be deleted. This is
@@ -296,8 +300,8 @@ instead of making it up.
 (target files, the handoff file, `config.md`). Print the blocks. Write only in the
 modes that were requested, and only to the step 4 targets.
 
-**Forbidden**: running `/compact` yourself (the user pastes it; running it wipes their
-context). Searching for files or folders. Creating files or folders in the project.
+**Forbidden**: running `/compact` yourself (the user pastes it or presses Smart compact;
+running it wipes their context). Searching for files or folders. Creating files or folders in the project.
 Writing when no write mode was requested. Rewriting or deleting existing lines, except
 the two exceptions in 4a. Copying a secret into a block or a file. Inventing a reason
 for a decision that was not explained. The skill itself does not commit or push. A
