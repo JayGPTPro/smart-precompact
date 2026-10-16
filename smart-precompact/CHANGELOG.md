@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.0 (2026-10-16)
+
+- On the desktop the mod's row is drawn in the dock look: one image row (the flame, the meter,
+  a word only when there is one to say) beside native buttons. A terminal keeps the text row.
+- When the Context Mods (TL;DR, Copy chat, Hebrew tools) draw their shared row beneath this one,
+  the desktop row takes their buttons in, behind a thin divider, so both sit on one line. Only
+  when everything fits; in a narrow window, and in a terminal, the two rows stay apart.
+
 ## 3.1.0 (2026-10-04)
 
 - In `handoff` mode the skill also saves its /compact line, as a hidden last line of the

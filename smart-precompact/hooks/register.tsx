@@ -11,7 +11,7 @@
 // gets the prepared line, or a keep-list when there is none.
 // The 60%/80% notes and the restore after a compact stay with the Python hook.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Meter, Receipt } from '../types'
 
@@ -359,6 +359,76 @@ function dockLayout(bodyColumns: number, buttonsPx: number, chips: DockChip[]): 
 }
 // ---------- end of the dock look ----------
 
+// The mods in JayGPTPro/context-mods (TL;DR, Copy chat, Hebrew tools) share one row above the
+// prompt (key 'mods-row'). Hooks nest in the order the skills folder lists them: when a mod is
+// outer of this one it moves into this row by itself (its hooks/panel.ts); when this one is outer
+// of every mod, it takes their row in here. On the desktop only, and only when all of it fits, by
+// the same width math as panel.ts; otherwise both rows stay as they are.
+const MODS_ROW = 'mods-row'
+// The hairline between the mods' buttons and this mod's own: panel.ts's DIVIDER, told apart by its empty alt.
+const MODS_DIVIDER =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="16" viewBox="0 0 9 16"><rect x="4" y="1" width="1" height="14" rx=".5" fill="rgba(60,55,45,.18)"/></svg>'
+const MODS_DIVIDER_PX = 9 + DOCK_PX
+
+type Drawn = { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+const asDrawn = (node: unknown): Drawn | null => (node !== null && typeof node === 'object' ? (node as Drawn) : null)
+const isButtonNode = (node: unknown) => asDrawn(node)?.type === 'Button'
+const isSvgNode = (node: unknown) => asDrawn(node)?.type === 'Svg'
+
+/** The first node, depth first, with this key. */
+function findKeyed(node: unknown, key: string): Drawn | null {
+  const n = asDrawn(node)
+  if (n === null) return null
+  if (n.props?.key === key) return n
+  for (const child of n.children ?? []) {
+    const found = findKeyed(child, key)
+    if (found) return found
+  }
+  return null
+}
+
+/** The tree without `target`, copied along the path. */
+function dropNode(node: unknown, target: Drawn): unknown {
+  const n = asDrawn(node)
+  if (n === null || !n.children) return node
+  let changed = false
+  const children: unknown[] = []
+  for (const child of n.children) {
+    if (child === target) {
+      changed = true
+      continue
+    }
+    const next = dropNode(child, target)
+    if (next !== child) changed = true
+    children.push(next)
+  }
+  return changed ? { ...n, children } : node
+}
+
+/**
+ * The mods' row beneath, taken in: its images and buttons, and the drawing beneath without it.
+ * Null when there is none, when it holds anything else (a word, a terminal row), or when it does
+ * not fit beside `ownPx`, what this row's image and buttons take.
+ */
+function adoptModsRow(beneath: unknown, bodyColumns: number, ownPx: number): { guests: unknown[]; beneath: unknown } | null {
+  const row = findKeyed(beneath, MODS_ROW)
+  if (row === null) return null
+  const kids = (row.children ?? []).filter(child => child !== null && child !== undefined && child !== false)
+  const isSpacer = (node: unknown) => asDrawn(node)?.type === 'Box' && (asDrawn(node)?.children ?? []).length === 0
+  if (!kids.every(child => isButtonNode(child) || isSvgNode(child) || isSpacer(child))) return null
+  // A hairline already there would be a second one: this row draws its own.
+  const guests = kids.filter(child => isButtonNode(child) || (isSvgNode(child) && asDrawn(child)?.props?.alt !== ''))
+  if (guests.length === 0) return null
+  const guestsPx = guests.reduce<number>((sum, child) => {
+    const props = asDrawn(child)?.props ?? {}
+    if (isSvgNode(child)) return sum + (typeof props.width === 'number' ? props.width + DOCK_PX : 0)
+    return sum + (typeof props.label === 'string' ? dockButtonPx(props.label) : 0)
+  }, 0)
+  const columns = Number.isFinite(bodyColumns) && bodyColumns > 0 ? bodyColumns : 100
+  if (ownPx + guestsPx + MODS_DIVIDER_PX > columns * DOCK_PX - 16) return null
+  return { guests, beneath: beneath === row ? null : dropNode(beneath, row) }
+}
+
 // The row's tile: the flame on a pale warm square.
 const FLAME_TILE =
   '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">' +
@@ -487,19 +557,24 @@ export const register: Register = on => {
     // The desktop draws each state as one image row in the dock look, beside native buttons.
     // Asked by surface: the terminal's table answers 'Svg' too and draws nothing for it.
     const isDesktop = e.surface === 'desktop' && 'Svg' in ui
-    const dockBand = (key: string, chips: DockChip[], labels: string[], pressable: unknown[]) => {
+    // The whole drawing: this row, with the mods' shared row taken in when it fits, then the rest beneath.
+    const dockBand = async (key: string, chips: DockChip[], labels: string[], pressable: RenderChildren[]) => {
       if (!(e.surface === 'desktop' && 'Svg' in ui)) return null
       const Svg = ui.Svg
-      const lay = dockLayout(
-        e.props.bodyColumns,
-        labels.reduce((sum, label) => sum + dockButtonPx(label), 0),
-        chips,
-      )
+      const buttonsPx = labels.reduce((sum, label) => sum + dockButtonPx(label), 0)
+      const lay = dockLayout(e.props.bodyColumns, buttonsPx, chips)
+      const beneath = await next(e)
+      const mods = adoptModsRow(beneath, e.props.bodyColumns, lay.width + DOCK_PX + buttonsPx)
       return (
-        <Box key={key} flexDirection="row" alignItems="center" gap={1}>
-          <Svg source={dockRow(lay.width, FLAME_TILE, lay.chips)} alt="Smart PreCompact" width={lay.width} height={DOCK_H} />
-          <Box flexGrow={1} />
-          {pressable}
+        <Box key="spc-stack" flexDirection="column">
+          <Box key={key} flexDirection="row" alignItems="center" gap={1}>
+            <Svg source={dockRow(lay.width, FLAME_TILE, lay.chips)} alt="Smart PreCompact" width={lay.width} height={DOCK_H} />
+            <Box flexGrow={1} />
+            {mods ? (mods.guests as RenderChildren[]) : null}
+            {mods ? <Svg source={MODS_DIVIDER} alt="" width={9} height={16} /> : null}
+            {pressable}
+          </Box>
+          {mods ? (mods.beneath as typeof beneath) : beneath}
         </Box>
       )
     }
@@ -526,7 +601,7 @@ export const register: Register = on => {
       const dismiss = (
         <Button key="dismiss" label="OK" hotkey={isDesktop ? undefined : 'o'} dimColor onPress={() => update($, receipt, () => null)} />
       )
-      const receiptBand = dockBand(
+      const receiptBand = await dockBand(
         'spc-receipt',
         [
           dockChip(done.after === undefined ? `Compacted · ${tokens(done.before)}` : `Compacted · ${tokens(done.before)} → ${tokens(done.after)}`, 'good', { icon: CHECK_ICON }),
@@ -538,7 +613,7 @@ export const register: Register = on => {
         ['OK'],
         [dismiss],
       )
-      if (receiptBand !== null) return stacked(receiptBand)
+      if (receiptBand !== null) return receiptBand
       return stacked(
         <Box key="spc-receipt" flexDirection="row" gap={1} alignItems="center">
           {mark}
@@ -687,7 +762,7 @@ export const register: Register = on => {
           : saved
             ? dockChip(state, 'quiet', { icon: CHECK_ICON })
             : null
-    const meterBand = dockBand(
+    const meterBand = await dockBand(
       'spc-band',
       [meterChip(m), ...(stateChip ? [stateChip] : []), ...(isWide && used ? [dockChip(used, 'quiet')] : [])],
       [...(canCompact ? ['Smart compact'] : []), 'Hide'],
@@ -696,7 +771,7 @@ export const register: Register = on => {
         <Button key="hide" label="Hide" dimColor onPress={hide} />,
       ],
     )
-    if (meterBand !== null) return stacked(meterBand)
+    if (meterBand !== null) return meterBand
 
     return stacked(
       <Box key="spc-band" flexDirection="row" gap={1} alignItems="center">

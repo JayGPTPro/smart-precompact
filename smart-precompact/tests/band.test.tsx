@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 95, scroll: { offset: 0, bodyRows: 10 }, view: {} }
 
-function world(on: any, percent: number): void {
+function world(on: any, percent: number, withModsRow = false): void {
   on('session.usage', async () => ({
     value: {
       context: { percent, tokens: percent * 10_000, window: 1_000_000 },
@@ -16,8 +16,24 @@ function world(on: any, percent: number): void {
   on('env.get', async () => ({ value: undefined }))
   // The engine's own row beneath: the mod's row must keep it.
   on('ui.render', { component: 'AbovePrompt' }, ($: any, e: any) => {
-    const { Text } = $.ui.resolve(e)
-    return <Text key="engine-band">engine</Text>
+    const ui = $.ui.resolve(e)
+    const { Box, Button, Text } = ui
+    const engine = <Text key="engine-band">engine</Text>
+    if (!withModsRow) return engine
+    // The shared row the mods in context-mods draw when no row of Smart PreCompact's is beneath
+    // them: Hebrew tools' tile on the desktop, a spacer, then the buttons (Copy chat's shape in a terminal).
+    const isDesktop = e.surface === 'desktop'
+    return (
+      <Box flexDirection="column">
+        <Box key="mods-row" flexDirection="row" alignItems="center" gap={1}>
+          {isDesktop ? <ui.Svg source="<svg/>" alt="Hebrew" width={34} height={26} /> : null}
+          <Box flexGrow={1} />
+          <Button key="direction" label="⇄ Left" onPress={() => undefined} />
+          <Button key="copy-chat" label="Copy chat" onPress={() => undefined} />
+        </Box>
+        {engine}
+      </Box>
+    )
   })
   mock.store(on, {})
   mock.clock(on, { now: Date.parse('2026-10-06T10:00:00Z') })
@@ -48,4 +64,54 @@ test('a terminal keeps the text row', async ($: any, on: any) => {
   expect(tree).not.toContain('"type":"Svg"')
   expect(tree).toContain('["64","%"]')
   expect(await band.find({ key: 'compact' })).toBeDefined()
+})
+
+// What a row holds, in order: each Button's label, each Svg's alt (the hairline's is "").
+function rowOf(tree: any, key: string): string[] | null {
+  if (tree === null || typeof tree !== 'object') return null
+  if (tree.props?.key === key) {
+    return (tree.children ?? []).flatMap((c: any) =>
+      c?.type === 'Button' ? [String(c.props.label)] : c?.type === 'Svg' ? [`svg:${c.props.alt}`] : c?.type === 'Box' ? ['spacer'] : [],
+    )
+  }
+  for (const child of tree.children ?? []) {
+    const found = rowOf(child, key)
+    if (found) return found
+  }
+  return null
+}
+
+test('a wide desktop takes the mods\' shared row beneath into its own, behind a hairline', async ($: any, on: any) => {
+  world(on, 64, true)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
+  const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 140 } })
+  const tree = await band.drawn()
+  expect(rowOf(tree, 'spc-band')).toEqual(['svg:Smart PreCompact', 'spacer', 'svg:Hebrew', '⇄ Left', 'Copy chat', 'svg:', 'Smart compact', 'Hide'])
+  expect(rowOf(tree, 'mods-row')).toBeNull()
+  const json = JSON.stringify(tree)
+  expect(json.split('"alt":""').length - 1).toBe(1)
+  expect(json).toContain('["engine"]')
+  expect(await band.find({ key: 'copy-chat' })).toBeDefined()
+})
+
+test('a narrow desktop leaves both rows as they are', async ($: any, on: any) => {
+  world(on, 64, true)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
+  const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 50 } })
+  const tree = await band.drawn()
+  expect(rowOf(tree, 'spc-band')).toEqual(['svg:Smart PreCompact', 'spacer', 'Smart compact', 'Hide'])
+  expect(rowOf(tree, 'mods-row')).toEqual(['svg:Hebrew', 'spacer', '⇄ Left', 'Copy chat'])
+  expect(JSON.stringify(tree)).not.toContain('"alt":""')
+  expect(JSON.stringify(tree)).toContain('["engine"]')
+})
+
+test('a terminal leaves the mods\' row and its own text row apart', async ($: any, on: any) => {
+  world(on, 64, true)
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 140 } })
+  const tree = await band.drawn()
+  expect(rowOf(tree, 'mods-row')).toEqual(['spacer', '⇄ Left', 'Copy chat'])
+  expect(rowOf(tree, 'spc-band')).toContain('Smart compact')
+  expect(rowOf(tree, 'spc-band')).not.toContain('Copy chat')
+  expect(JSON.stringify(tree)).toContain('["engine"]')
 })
