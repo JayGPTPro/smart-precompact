@@ -11,7 +11,7 @@
 // gets the prepared line, or a keep-list when there is none.
 // The 60%/80% notes and the restore after a compact stay with the Python hook.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Meter, Receipt } from '../types'
 
@@ -264,6 +264,198 @@ const refresh = async ($: EngineInterface) => {
   if (!isStale) await update($, hiddenAtTier, h => (tier >= h ? 0 : tier + 1))
 }
 
+// ---------- the dock look ----------
+// The same look as the Context Mods' rows, so they read as one panel.
+// On the desktop each row above the prompt is one SVG image (a pale brand tile, then a few
+// quiet chips) beside the native buttons. HTML inside the SVG gives the system font and
+// right-to-left Hebrew. It must stay a plain image: an interactive SVG drops the HTML and draws
+// nothing (probed in the Code tab, 6.10.26). Color is kept for what needs a person: only a
+// warning or a failure is a filled pill; everything else is text with a small dot or icon.
+const DOCK_PX = 7.9 // CSS pixels per band column on the desktop (measured against the 20px tile, 6.10.26)
+const DOCK_H = 26
+const DOCK_LEAD = 30 // the tile and the space after it
+const DOCK_SEP = 15 // the small dot between two chips, with its spacing
+const DOCK_FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif"
+const DOCK_HEBREW = /[֐-׿]/
+const DOCK_CSS = [
+  `.r{display:flex;align-items:center;height:${DOCK_H}px;font:500 12px/1 ${DOCK_FONT};color:#45413b;white-space:nowrap;overflow:hidden;-webkit-font-smoothing:antialiased}`,
+  '.tile{flex:none;display:flex;width:20px;height:20px;margin-right:10px}',
+  '.sep{flex:none;width:3px;height:3px;border-radius:2px;background:rgba(60,55,45,.2);margin:0 6px}',
+  '.c{display:inline-flex;align-items:center;gap:6px;height:20px;flex:none;padding:0 1px}',
+  '.c i{width:6px;height:6px;border-radius:3px;flex:none;background:#aaa59c}',
+  '.c s{text-decoration:none;color:#9b968d;font-weight:400}',
+  '.c svg{flex:none}',
+  '.good i{background:#36a463}',
+  '.info{color:#2f5ea8}',
+  '.info i{background:#3b74d9}',
+  '.quiet{color:#8d887f;font-weight:450}',
+  '.warn,.bad{padding:0 9px;border-radius:10px}',
+  '.warn{color:#8a520a;background:rgba(232,152,30,.16)}',
+  '.warn i{background:#e0901c}',
+  '.bad{color:#ad3527;background:rgba(225,72,56,.12)}',
+  '.bad i{background:#e0483a}',
+  '.m{display:inline-flex;align-items:center;gap:8px;flex:none}',
+  '.m em{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums;color:#45413b}',
+  '.m em.warm{color:#c4613d}',
+  '.m em.hot{color:#d23b2d}',
+  '.bar{position:relative;width:96px;height:4px;border-radius:2px;background:rgba(45,40,30,.1)}',
+  '.bar b{position:absolute;left:0;top:0;bottom:0;border-radius:2px}',
+  '.bar u{position:absolute;top:-2px;width:1.5px;height:8px;margin-left:-1px;border-radius:1px;background:rgba(45,40,30,.22)}',
+  '@media (prefers-color-scheme:dark){.r{color:#dedad3}.sep{background:rgba(255,255,255,.2)}.c s{color:#8f8a82}.info{color:#9bbcf6}.quiet{color:#9a958d}.warn{color:#f2bd63;background:rgba(240,170,60,.17)}.bad{color:#ff8f80;background:rgba(240,90,70,.18)}.m em{color:#dedad3}.m em.warm{color:#f0956c}.bar{background:rgba(255,255,255,.14)}.bar u{background:rgba(255,255,255,.3)}}',
+].join('')
+
+type DockTone = 'good' | 'warn' | 'bad' | 'info' | 'plain' | 'quiet'
+type DockChip = { html: string; px: number }
+
+function dockEsc(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// One chip (about 6px a character in the real font, measured 6.10.26). Hebrew runs right to
+// left with its mark on the right; `dim` trails lighter; `icon` is trusted SVG markup drawn in
+// place of the dot, and a quiet chip has no dot. `px` is the width it is expected to take.
+function dockChip(text: string, tone: DockTone, extra: { dim?: string; icon?: string } = {}): DockChip {
+  const dir = DOCK_HEBREW.test(text) ? 'rtl' : 'ltr'
+  const mark = extra.icon ?? (tone === 'quiet' ? '' : '<i></i>')
+  const dim = extra.dim ? ` <s>${dockEsc(extra.dim)}</s>` : ''
+  const chars = text.length + (extra.dim ? extra.dim.length + 1 : 0)
+  const isPill = tone === 'warn' || tone === 'bad'
+  const px = Math.ceil(chars * 6.1 + (isPill ? 20 : 2) + (mark ? 12 : 0))
+  return { html: `<span class="c ${tone}" dir="${dir}">${mark}<span>${dockEsc(text)}</span>${dim}</span>`, px }
+}
+
+// The whole row as an SVG document: the tile, then the chips with a small dot between them.
+function dockRow(width: number, tile: string, chips: DockChip[]): string {
+  const w = Math.max(DOCK_LEAD, Math.round(width))
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${DOCK_H}" viewBox="0 0 ${w} ${DOCK_H}">` +
+    `<foreignObject x="0" y="0" width="${w}" height="${DOCK_H}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" class="r"><style>${DOCK_CSS}</style>` +
+    `<span class="tile">${tile}</span>${chips.map(c => c.html).join('<span class="sep"></span>')}</div>` +
+    '</foreignObject></svg>'
+  )
+}
+
+// A native desktop button's width: about 7.2px a character and 12px of padding, plus the
+// one-column gap before it (measured 6.10.26).
+function dockButtonPx(label: string): number {
+  return label.length * 7.2 + 12 + DOCK_PX
+}
+
+// Keeps the chips that fit beside the buttons, in order (the first are the most important), and
+// sizes the image to them with a little slack, so a short estimate never clips a last letter.
+function dockLayout(bodyColumns: number, buttonsPx: number, chips: DockChip[]): { width: number; chips: DockChip[] } {
+  const columns = Number.isFinite(bodyColumns) && bodyColumns > 0 ? bodyColumns : 100
+  const room = columns * DOCK_PX - buttonsPx - 16
+  const kept: DockChip[] = []
+  let used = DOCK_LEAD
+  for (const chip of chips) {
+    const add = (kept.length > 0 ? DOCK_SEP : 0) + chip.px
+    if (used + add > room) break
+    kept.push(chip)
+    used += add
+  }
+  return { width: Math.max(DOCK_LEAD, Math.min(room, used + 20)), chips: kept }
+}
+// ---------- end of the dock look ----------
+
+// The mods in JayGPTPro/context-mods (TL;DR) share one row above the
+// prompt (key 'mods-row'). Hooks nest in the order the skills folder lists them: when a mod is
+// outer of this one it moves into this row by itself (its hooks/panel.ts); when this one is outer
+// of every mod, it takes their row in here. On the desktop only, and only when all of it fits, by
+// the same width math as panel.ts; otherwise both rows stay as they are.
+const MODS_ROW = 'mods-row'
+// The hairline between the mods' buttons and this mod's own: panel.ts's DIVIDER, told apart by its empty alt.
+const MODS_DIVIDER =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="16" viewBox="0 0 9 16"><rect x="4" y="1" width="1" height="14" rx=".5" fill="rgba(60,55,45,.18)"/></svg>'
+const MODS_DIVIDER_PX = 9 + DOCK_PX
+
+type Drawn = { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+const asDrawn = (node: unknown): Drawn | null => (node !== null && typeof node === 'object' ? (node as Drawn) : null)
+const isButtonNode = (node: unknown) => asDrawn(node)?.type === 'Button'
+const isSvgNode = (node: unknown) => asDrawn(node)?.type === 'Svg'
+
+/** The first node, depth first, with this key. */
+function findKeyed(node: unknown, key: string): Drawn | null {
+  const n = asDrawn(node)
+  if (n === null) return null
+  if (n.props?.key === key) return n
+  for (const child of n.children ?? []) {
+    const found = findKeyed(child, key)
+    if (found) return found
+  }
+  return null
+}
+
+/** The tree without `target`, copied along the path. */
+function dropNode(node: unknown, target: Drawn): unknown {
+  const n = asDrawn(node)
+  if (n === null || !n.children) return node
+  let changed = false
+  const children: unknown[] = []
+  for (const child of n.children) {
+    if (child === target) {
+      changed = true
+      continue
+    }
+    const next = dropNode(child, target)
+    if (next !== child) changed = true
+    children.push(next)
+  }
+  return changed ? { ...n, children } : node
+}
+
+/**
+ * The mods' row beneath, taken in: its images and buttons, and the drawing beneath without it.
+ * Null when there is none, when it holds anything else (a word, a terminal row), or when it does
+ * not fit beside `ownPx`, what this row's image and buttons take.
+ */
+function adoptModsRow(beneath: unknown, bodyColumns: number, ownPx: number): { guests: unknown[]; beneath: unknown } | null {
+  const row = findKeyed(beneath, MODS_ROW)
+  if (row === null) return null
+  const kids = (row.children ?? []).filter(child => child !== null && child !== undefined && child !== false)
+  const isSpacer = (node: unknown) => asDrawn(node)?.type === 'Box' && (asDrawn(node)?.children ?? []).length === 0
+  if (!kids.every(child => isButtonNode(child) || isSvgNode(child) || isSpacer(child))) return null
+  // A hairline already there would be a second one: this row draws its own.
+  const guests = kids.filter(child => isButtonNode(child) || (isSvgNode(child) && asDrawn(child)?.props?.alt !== ''))
+  if (guests.length === 0) return null
+  const guestsPx = guests.reduce<number>((sum, child) => {
+    const props = asDrawn(child)?.props ?? {}
+    if (isSvgNode(child)) return sum + (typeof props.width === 'number' ? props.width + DOCK_PX : 0)
+    return sum + (typeof props.label === 'string' ? dockButtonPx(props.label) : 0)
+  }, 0)
+  const columns = Number.isFinite(bodyColumns) && bodyColumns > 0 ? bodyColumns : 100
+  if (ownPx + guestsPx + MODS_DIVIDER_PX > columns * DOCK_PX - 16) return null
+  return { guests, beneath: beneath === row ? null : dropNode(beneath, row) }
+}
+
+// The row's tile: the flame on a pale warm square.
+const FLAME_TILE =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">' +
+  '<defs><linearGradient id="spc-tile" x1="12" y1="2" x2="12" y2="22.7" gradientUnits="userSpaceOnUse">' +
+  '<stop stop-color="#ffb648"/><stop offset=".5" stop-color="#ff7a18"/><stop offset="1" stop-color="#d97757"/></linearGradient></defs>' +
+  '<rect width="20" height="20" rx="6" fill="#fdeadc"/>' +
+  '<path transform="translate(2.4 2.35) scale(.62)" d="M12 2c1 3.5-1.5 5-1.5 7.5 0 1.4 1 2.5 2.3 2.5 1.6 0 2.4-1.3 2.2-3 2.3 1.7 3.5 4.2 3.5 6.7A7 7 0 0 1 5.5 15.7c0-4.6 4.6-7.4 6.5-13.7Z" fill="url(#spc-tile)"/></svg>'
+
+const CHECK_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 12 12"><path d="M2.4 6.3l2.4 2.4 4.8-5.2" fill="none" stroke="#36a463" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+
+// The meter: the percentage, then a thin rounded bar in the flame's colors with a tick at each
+// threshold. The number stays ink until the first threshold, warms past it, turns red past the last.
+const meterChip = (m: Meter): DockChip => {
+  const tier = tierOf(m)
+  const fill = tier === 2 ? 'linear-gradient(90deg,#ff9a6b,#e5484d)' : 'linear-gradient(90deg,#ffb648,#ff7a18 60%,#d97757)'
+  const ticks = steps(m.window)
+    .map(step => `<u style="left:${step}%"></u>`)
+    .join('')
+  const width = Math.max(3, Math.min(100, m.percent))
+  const tone = tier === 2 ? ' class="hot"' : tier === 1 ? ' class="warm"' : ''
+  return {
+    html: `<span class="m"><em${tone}>${m.percent}%</em><span class="bar"><b style="width:${width}%;background:${fill}"></b>${ticks}</span></span>`,
+    px: 140,
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const ran = await next(e)
@@ -362,9 +554,34 @@ export const register: Register = on => {
       </Box>
     )
 
+    // The desktop draws each state as one image row in the dock look, beside native buttons.
+    // Asked by surface: the terminal's table answers 'Svg' too and draws nothing for it.
+    const isDesktop = e.surface === 'desktop' && 'Svg' in ui
+    // The whole drawing: this row, with the mods' shared row taken in when it fits, then the rest beneath.
+    const dockBand = async (key: string, chips: DockChip[], labels: string[], pressable: RenderChildren[]) => {
+      if (!(e.surface === 'desktop' && 'Svg' in ui)) return null
+      const Svg = ui.Svg
+      const buttonsPx = labels.reduce((sum, label) => sum + dockButtonPx(label), 0)
+      const lay = dockLayout(e.props.bodyColumns, buttonsPx, chips)
+      const beneath = await next(e)
+      const mods = adoptModsRow(beneath, e.props.bodyColumns, lay.width + DOCK_PX + buttonsPx)
+      return (
+        <Box key="spc-stack" flexDirection="column">
+          <Box key={key} flexDirection="row" alignItems="center" gap={1}>
+            <Svg source={dockRow(lay.width, FLAME_TILE, lay.chips)} alt="Smart PreCompact" width={lay.width} height={DOCK_H} />
+            <Box flexGrow={1} />
+            {mods ? (mods.guests as RenderChildren[]) : null}
+            {mods ? <Svg source={MODS_DIVIDER} alt="" width={9} height={16} /> : null}
+            {pressable}
+          </Box>
+          {mods ? (mods.beneath as typeof beneath) : beneath}
+        </Box>
+      )
+    }
+
     // The flame where the surface draws SVG (the desktop app); a mark in its color in a terminal.
     const mark =
-      'Svg' in ui ? (
+      isDesktop ? (
         <ui.Svg source={FLAME} alt="Smart PreCompact" width={14} height={14} />
       ) : (
         <Text color={BRAND} bold>
@@ -381,6 +598,22 @@ export const register: Register = on => {
     const done = await read($, receipt)
     if (done !== null) {
       const total = (await $.store.get(SAVED)) as Saved | undefined
+      const dismiss = (
+        <Button key="dismiss" label="OK" hotkey={isDesktop ? undefined : 'o'} dimColor onPress={() => update($, receipt, () => null)} />
+      )
+      const receiptBand = await dockBand(
+        'spc-receipt',
+        [
+          dockChip(done.after === undefined ? `Compacted · ${tokens(done.before)}` : `Compacted · ${tokens(done.before)} → ${tokens(done.after)}`, 'good', { icon: CHECK_ICON }),
+          done.after === undefined
+            ? dockChip('counting after your next message', 'quiet')
+            : dockChip(`${tokens(Math.max(0, done.before - done.after))} lighter`, 'quiet'),
+          ...(total && total.compacts > 0 ? [dockChip(`${tokens(total.tokens)} saved in ${total.compacts} ${total.compacts === 1 ? 'compact' : 'compacts'}`, 'quiet')] : []),
+        ],
+        ['OK'],
+        [dismiss],
+      )
+      if (receiptBand !== null) return receiptBand
       return stacked(
         <Box key="spc-receipt" flexDirection="row" gap={1} alignItems="center">
           {mark}
@@ -514,6 +747,31 @@ export const register: Register = on => {
     ]
       .filter(Boolean)
       .join(' · ')
+
+    const canCompact = !(working !== null || e.props.isWorking)
+    const hide = async () => {
+      const now = await read($, meter)
+      if (now !== null) await update($, hiddenAtTier, () => tierOf(now) + 1)
+    }
+    // Words only when they say something: a press at work, Claude busy, a line already prepared.
+    const stateChip =
+      working !== null
+        ? dockChip(state, 'info')
+        : e.props.isWorking
+          ? dockChip(state, 'quiet')
+          : saved
+            ? dockChip(state, 'quiet', { icon: CHECK_ICON })
+            : null
+    const meterBand = await dockBand(
+      'spc-band',
+      [meterChip(m), ...(stateChip ? [stateChip] : []), ...(isWide && used ? [dockChip(used, 'quiet')] : [])],
+      [...(canCompact ? ['Smart compact'] : []), 'Hide'],
+      [
+        canCompact ? <Button key="compact" label="Smart compact" onPress={smartCompact} /> : null,
+        <Button key="hide" label="Hide" dimColor onPress={hide} />,
+      ],
+    )
+    if (meterBand !== null) return meterBand
 
     return stacked(
       <Box key="spc-band" flexDirection="row" gap={1} alignItems="center">
