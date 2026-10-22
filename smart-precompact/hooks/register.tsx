@@ -265,7 +265,7 @@ const refresh = async ($: EngineInterface) => {
 }
 
 // ---------- the dock look ----------
-// Shared by hebrew-tools, hub-pulse and smart-precompact-mod: keep the three copies the same.
+// The same look as the Context Mods' rows, so they read as one panel.
 // On the desktop each row above the prompt is one SVG image (a pale brand tile, then a few
 // quiet chips) beside the native buttons. HTML inside the SVG gives the system font and
 // right-to-left Hebrew. It must stay a plain image: an interactive SVG drops the HTML and draws
@@ -359,7 +359,7 @@ function dockLayout(bodyColumns: number, buttonsPx: number, chips: DockChip[]): 
 }
 // ---------- end of the dock look ----------
 
-// The mods in JayGPTPro/context-mods (TL;DR, Copy chat, Hebrew tools) share one row above the
+// The mods in JayGPTPro/context-mods (TL;DR) share one row above the
 // prompt (key 'mods-row'). Hooks nest in the order the skills folder lists them: when a mod is
 // outer of this one it moves into this row by itself (its hooks/panel.ts); when this one is outer
 // of every mod, it takes their row in here. On the desktop only, and only when all of it fits, by

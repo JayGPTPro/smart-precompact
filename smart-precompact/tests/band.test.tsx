@@ -21,15 +21,15 @@ function world(on: any, percent: number, withModsRow = false): void {
     const engine = <Text key="engine-band">engine</Text>
     if (!withModsRow) return engine
     // The shared row the mods in context-mods draw when no row of Smart PreCompact's is beneath
-    // them: Hebrew tools' tile on the desktop, a spacer, then the buttons (Copy chat's shape in a terminal).
+    // them: a mod's tile on the desktop, a spacer, then the buttons.
     const isDesktop = e.surface === 'desktop'
     return (
       <Box flexDirection="column">
         <Box key="mods-row" flexDirection="row" alignItems="center" gap={1}>
-          {isDesktop ? <ui.Svg source="<svg/>" alt="Hebrew" width={34} height={26} /> : null}
+          {isDesktop ? <ui.Svg source="<svg/>" alt="Tile" width={34} height={26} /> : null}
           <Box flexGrow={1} />
-          <Button key="direction" label="⇄ Left" onPress={() => undefined} />
-          <Button key="copy-chat" label="Copy chat" onPress={() => undefined} />
+          <Button key="tldr-off" label="↩ No TL;DR" onPress={() => undefined} />
+          <Button key="other" label="Other mod" onPress={() => undefined} />
         </Box>
         {engine}
       </Box>
@@ -86,12 +86,12 @@ test('a wide desktop takes the mods\' shared row beneath into its own, behind a 
   await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
   const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 140 } })
   const tree = await band.drawn()
-  expect(rowOf(tree, 'spc-band')).toEqual(['svg:Smart PreCompact', 'spacer', 'svg:Hebrew', '⇄ Left', 'Copy chat', 'svg:', 'Smart compact', 'Hide'])
+  expect(rowOf(tree, 'spc-band')).toEqual(['svg:Smart PreCompact', 'spacer', 'svg:Tile', '↩ No TL;DR', 'Other mod', 'svg:', 'Smart compact', 'Hide'])
   expect(rowOf(tree, 'mods-row')).toBeNull()
   const json = JSON.stringify(tree)
   expect(json.split('"alt":""').length - 1).toBe(1)
   expect(json).toContain('["engine"]')
-  expect(await band.find({ key: 'copy-chat' })).toBeDefined()
+  expect(await band.find({ key: 'other' })).toBeDefined()
 })
 
 test('a narrow desktop leaves both rows as they are', async ($: any, on: any) => {
@@ -100,7 +100,7 @@ test('a narrow desktop leaves both rows as they are', async ($: any, on: any) =>
   const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 50 } })
   const tree = await band.drawn()
   expect(rowOf(tree, 'spc-band')).toEqual(['svg:Smart PreCompact', 'spacer', 'Smart compact', 'Hide'])
-  expect(rowOf(tree, 'mods-row')).toEqual(['svg:Hebrew', 'spacer', '⇄ Left', 'Copy chat'])
+  expect(rowOf(tree, 'mods-row')).toEqual(['svg:Tile', 'spacer', '↩ No TL;DR', 'Other mod'])
   expect(JSON.stringify(tree)).not.toContain('"alt":""')
   expect(JSON.stringify(tree)).toContain('["engine"]')
 })
@@ -110,8 +110,8 @@ test('a terminal leaves the mods\' row and its own text row apart', async ($: an
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   const band = await $.ui.mount({ plugin: 'smart-precompact-mod', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 140 } })
   const tree = await band.drawn()
-  expect(rowOf(tree, 'mods-row')).toEqual(['spacer', '⇄ Left', 'Copy chat'])
+  expect(rowOf(tree, 'mods-row')).toEqual(['spacer', '↩ No TL;DR', 'Other mod'])
   expect(rowOf(tree, 'spc-band')).toContain('Smart compact')
-  expect(rowOf(tree, 'spc-band')).not.toContain('Copy chat')
+  expect(rowOf(tree, 'spc-band')).not.toContain('Other mod')
   expect(JSON.stringify(tree)).toContain('["engine"]')
 })
