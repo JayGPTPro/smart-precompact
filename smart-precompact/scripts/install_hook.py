@@ -38,7 +38,9 @@ def remove_ours(hooks):
     """Drop this hook's entries from every event; drop groups and events left empty."""
     removed = 0
     for event in list(hooks):
-        groups = hooks[event] if isinstance(hooks[event], list) else []
+        if not isinstance(hooks[event], list):
+            continue  # not a shape this script wrote: left exactly as it is
+        groups = hooks[event]
         kept_groups = []
         for group in groups:
             inner = group.get("hooks") if isinstance(group, dict) else None
@@ -113,6 +115,10 @@ def main(argv):
     if not os.path.isfile(HOOK):
         print("Did not change anything: %s is missing. Reinstall the skill folder." % HOOK)
         return 1
+    for event in ("UserPromptSubmit", "SessionStart"):
+        if not isinstance(hooks.get(event, []), list):
+            print("Did not change anything: hooks.%s in %s is not a list. Fix it by hand, then run this again." % (event, SETTINGS))
+            return 1
     hooks.setdefault("UserPromptSubmit", []).append({"hooks": [hook_entry()]})
     hooks.setdefault("SessionStart", []).append({"matcher": "compact", "hooks": [hook_entry()]})
     data["hooks"] = hooks

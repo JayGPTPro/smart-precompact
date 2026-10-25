@@ -162,10 +162,22 @@ def auto_compact_setting(cwd):
     return 0
 
 
-def context_window(model, cwd, tokens=0):
-    """The ceiling the percentage is measured against: the model's window,
-    lowered to the auto-compact window when one is set below it."""
-    window = model_window(model)
+def mod_window(session_id):
+    """The window the Smart PreCompact mod saw the engine measure against, when it runs in this
+    session (written on every reading to .state/<session>.window.json); 0 when there is none."""
+    if not session_id:
+        return 0
+    try:
+        with open(os.path.join(STATE_DIR, safe_id(session_id) + ".window.json"), encoding="utf-8") as f:
+            return window_tokens(json.load(f).get("window"))
+    except (OSError, ValueError, AttributeError):
+        return 0
+
+
+def context_window(model, cwd, tokens=0, session_id=""):
+    """The ceiling the percentage is measured against: what the mod saw the engine use, else the
+    model's window; lowered to the auto-compact window when one is set below it."""
+    window = mod_window(session_id) or model_window(model)
     custom = to_int(os.environ.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS"))
     if custom and model and not str(model).lower().startswith("claude-"):
         window = custom  # Claude Code applies this only to ids it does not recognize
@@ -292,7 +304,7 @@ def on_prompt(data):
     tokens, model = (0, None)
     if transcript and os.path.isfile(transcript):
         tokens, model = last_usage(transcript)
-    window = context_window(model, data.get("cwd") or "", tokens)
+    window = context_window(model, data.get("cwd") or "", tokens, session_id)
     steps = thresholds_for(window)
 
     claimed = "%s.%d" % (TEST_MARKER, os.getpid())

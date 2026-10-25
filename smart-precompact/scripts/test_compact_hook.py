@@ -227,6 +227,17 @@ class HookTest(Base):
                     os.remove(state)
                 self.note(self.prompt(text, env={"PYTHONIOENCODING": enc}))
 
+    def test_the_mods_window_file_wins_over_the_model_table(self):
+        # The mod saw the engine measure this session against 1M; the table says 200K for this model.
+        d = os.path.join(self.home, ".claude", "handoffs", ".state")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, SID + ".window.json"), "w") as f:
+            json.dump({"window": 1_000_000, "at": "2026-10-25T10:00:00Z"}, f)
+        self.add(user(), assistant(130_000, model="claude-opus-4-6"))
+        self.assertEqual(self.prompt(), "", "13% of 1M: no note")
+        self.add(user(), assistant(610_000, model="claude-opus-4-6"))
+        self.assertIn("61% full", self.note(self.prompt()))
+
     def test_usage_past_the_guessed_window_means_a_bigger_window(self):
         self.add(user(), assistant(300_000, model="claude-opus-4-6"))
         self.assertEqual(self.prompt(), "", "300K cannot be 150% of 200K; this session runs at 1M")

@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.1 (2026-10-25)
+
+- The hook measures against the window the mod saw the engine use (written on every reading to
+  `.state/<session>.window.json`), so its 60%/80% notes and the meter agree on a model its own
+  table does not know.
+- A press whose record could not be read no longer leaves the row saying "preparing" for 15 minutes.
+- `install_hook.py` leaves a hooks entry it does not recognize alone instead of dropping it.
+
 ## 3.2.0 (2026-10-16)
 
 - On the desktop the mod's row is drawn in the dock look: one image row (the flame, the meter,

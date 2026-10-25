@@ -232,6 +232,13 @@ const refresh = async ($: EngineInterface) => {
           ...(fiveHour === undefined ? {} : { fiveHour: Math.round(fiveHour) }),
         }
   await update($, meter, () => next)
+  // The window the engine measures against, for the Python hook: its own table of models can be
+  // wrong for a new model, and then its 60%/80% notes and this meter disagree.
+  if (next !== null && next.window > 0) {
+    await $.fs
+      .write(`${await home($)}/.claude/handoffs/.state/${await sessionKey($)}.window.json`, JSON.stringify({ window: next.window, at: new Date().toISOString() }))
+      .catch(() => undefined)
+  }
   const saved = (await freshHandoff($)) !== null
   await update($, hasHandoff, () => saved)
   // The receipt: filled in by the first reading after the compact, cleared once it is old.
@@ -700,8 +707,9 @@ export const register: Register = on => {
     // One press: a recent prepared line as it is, else a quiet prepare, then the compact.
     const smartCompact = async () => {
       if (!(await claim($, 'preparing'))) return
-      const compactedBefore = await compactedAt($)
       try {
+        // Inside the try, so a store that cannot be read still releases the busy flag.
+        const compactedBefore = await compactedAt($)
         const handoff = await freshHandoff($)
         const isRecent = handoff?.compactLine && (await $.clock.now()) - handoff.mtimeMs < REUSE_MS
         let instructions: string

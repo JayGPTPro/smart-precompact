@@ -3,7 +3,9 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 95, scroll: { offset: 0, bodyRows: 10 }, view: {} }
 
+const written = new Map<string, string>()
 function world(on: any, percent: number, withModsRow = false): void {
+  written.clear()
   on('session.usage', async () => ({
     value: {
       context: { percent, tokens: percent * 10_000, window: 1_000_000 },
@@ -14,6 +16,11 @@ function world(on: any, percent: number, withModsRow = false): void {
   on('session.start', async ($: any, e: any) => ({ cwd: e.cwd }))
   on('ui.status', async () => ({ value: undefined }))
   on('env.get', async () => ({ value: undefined }))
+  on('session.id', async () => ({ value: 'abcdef12-0000' }))
+  on('fs.write', async (_: any, e: any) => {
+    written.set(e.path, e.text)
+    return { value: undefined }
+  })
   // The engine's own row beneath: the mod's row must keep it.
   on('ui.render', { component: 'AbovePrompt' }, ($: any, e: any) => {
     const ui = $.ui.resolve(e)
@@ -114,4 +121,12 @@ test('a terminal leaves the mods\' row and its own text row apart', async ($: an
   expect(rowOf(tree, 'spc-band')).toContain('Smart compact')
   expect(rowOf(tree, 'spc-band')).not.toContain('Other mod')
   expect(JSON.stringify(tree)).toContain('["engine"]')
+})
+
+test('every reading writes the window the engine measures against, for the Python hook', async ($: any, on: any) => {
+  world(on, 23)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
+  const entry = [...written.entries()].find(([path]) => path.endsWith('.window.json'))
+  expect(entry).toBeDefined()
+  expect(JSON.parse(entry?.[1] ?? '{}').window).toBe(1_000_000)
 })
